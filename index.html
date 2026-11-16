@@ -1,21 +1,180 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sleeper Dynasty League Exporter</title><style>body{font:16px system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 18px;line-height:1.5}button{background:#155eef;color:white;border:0;border-radius:8px;padding:13px 20px;font-size:16px;cursor:pointer}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f4f7;padding:12px;border-radius:8px}input{padding:10px;width:95%;font-size:16px}label{display:block;margin:20px 0 8px}</style></head><body><h1>Sleeper Dynasty League Exporter</h1><p>Exports public Sleeper league information to one JSON file. Data stays in your browser until you save the file.</p><label for="league">Sleeper league ID</label><input id="league" value="1312322073380544512" inputmode="numeric"><p><button id="export">Export League Data</button></p><pre id="status" role="status">Ready.</pre><script>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sleeper Dynasty League Exporter</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 18px;line-height:1.5}
+button{background:#155eef;color:white;border:0;border-radius:8px;padding:13px 20px;font-size:16px;cursor:pointer}
+button:disabled{opacity:.5}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f4f7;padding:12px;border-radius:8px}
+input{padding:10px;width:95%;font-size:16px}
+label{display:block;margin:20px 0 8px}
+</style>
+</head>
+<body>
+<h1>Sleeper Dynasty League Exporter</h1>
+<p>Exports public Sleeper league data, including player names, positions, rosters, matchups, trades, and draft picks.</p>
+<label for="league">Sleeper league ID</label>
+<input id="league" value="1312322073380544512" inputmode="numeric">
+<p><button id="export">Export League Data</button></p>
+<pre id="status" role="status">Ready.</pre>
+<script>
 const BASE='https://api.sleeper.app/v1';
-const status=document.querySelector('#status'),button=document.querySelector('#export');
-const get=async path=>{const r=await fetch(BASE+path);if(!r.ok)throw new Error(`${r.status} fetching ${path}`);return r.json()};
-const settled=async entries=>{const out={};await Promise.all(entries.map(async ([key,path])=>{try{out[key]=await get(path)}catch(e){out[key]={error:String(e)}}}));return out};
-button.onclick=async()=>{button.disabled=true;try{
- const id=document.querySelector('#league').value.trim();if(!/^\d+$/.test(id))throw new Error('Enter a numeric Sleeper league ID.');
- status.textContent='Loading league details...';const league=await get(`/league/${id}`);if(!league||!league.league_id)throw new Error('League not found.');
- const weeks=Array.from({length:18},(_,i)=>i+1);
- const entries=[['users',`/league/${id}/users`],['rosters',`/league/${id}/rosters`],['traded_picks',`/league/${id}/traded_picks`],['drafts',`/league/${id}/drafts`],...weeks.flatMap(w=>[[`matchups_week_${w}`,`/league/${id}/matchups/${w}`],[`transactions_week_${w}`,`/league/${id}/transactions/${w}`]])];
- status.textContent=`Loading ${entries.length} data sets...`;
- const data=await settled(entries);
- const drafts=Array.isArray(data.drafts)?data.drafts:[];
- const draftData=await settled(drafts.flatMap(d=>[[`draft_${d.draft_id}_details`,`/draft/${d.draft_id}`],[`draft_${d.draft_id}_picks`,`/draft/${d.draft_id}/picks`]]));
- const output={exported_at:new Date().toISOString(),source:'Sleeper public API',league_id:id,league,data,draft_data:draftData,notes:['Weekly matchup records include points and roster player IDs; derived optimal Max PF and standings require further calculation.','Transactions cover weeks 1–18 of this league season. Prior seasons require prior league IDs.']};
- const blob=new Blob([JSON.stringify(output,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`sleeper-league-${id}-${new Date().toISOString().slice(0,10)}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
- const failures=Object.entries({...data,...draftData}).filter(([,v])=>v&&v.error).map(([k,v])=>`${k}: ${v.error}`);
- status.textContent=`Export created. ${failures.length?`${failures.length} requests failed; inspect JSON for details.\n${failures.slice(0,8).join('\n')}`:'All requests succeeded.'}`;
- }catch(e){status.textContent=`Error: ${e.message}\nIf the browser blocks Sleeper API requests, we will need a different export method.`}finally{button.disabled=false}};
-</script></body></html>
+const status=document.querySelector('#status');
+const button=document.querySelector('#export');
+
+const get=async path=>{
+ const r=await fetch(BASE+path);
+ if(!r.ok)throw new Error(`${r.status} fetching ${path}`);
+ return r.json();
+};
+
+const settled=async entries=>{
+ const out={};
+ await Promise.all(entries.map(async ([key,path])=>{
+  try{out[key]=await get(path)}
+  catch(e){out[key]={error:String(e)}}
+ }));
+ return out;
+};
+
+button.onclick=async()=>{
+ button.disabled=true;
+ try{
+  const id=document.querySelector('#league').value.trim();
+  if(!/^\d+$/.test(id))throw new Error('Enter a numeric Sleeper league ID.');
+
+  status.textContent='Loading league details...';
+  const league=await get(`/league/${id}`);
+  if(!league||!league.league_id)throw new Error('League not found.');
+
+  const weeks=Array.from({length:18},(_,i)=>i+1);
+  const entries=[
+   ['users',`/league/${id}/users`],
+   ['rosters',`/league/${id}/rosters`],
+   ['traded_picks',`/league/${id}/traded_picks`],
+   ['drafts',`/league/${id}/drafts`],
+   ...weeks.flatMap(w=>[
+    [`matchups_week_${w}`,`/league/${id}/matchups/${w}`],
+    [`transactions_week_${w}`,`/league/${id}/transactions/${w}`]
+   ])
+  ];
+
+  status.textContent=`Loading ${entries.length} league data sets...`;
+  const data=await settled(entries);
+
+  const drafts=Array.isArray(data.drafts)?data.drafts:[];
+  const draftData=await settled(drafts.flatMap(d=>[
+   [`draft_${d.draft_id}_details`,`/draft/${d.draft_id}`],
+   [`draft_${d.draft_id}_picks`,`/draft/${d.draft_id}/picks`]
+  ]));
+
+  status.textContent='Loading current NFL player directory...';
+  const directory=await get('/players/nfl');
+
+  const ids=new Set();
+  const add=x=>{
+   if(x!==null&&x!==undefined)ids.add(String(x));
+  };
+
+  for(const roster of data.rosters||[]){
+   for(const p of roster.players||[])add(p);
+   for(const p of roster.starters||[])add(p);
+   for(const p of roster.reserve||[])add(p);
+   for(const p of roster.taxi||[])add(p);
+  }
+
+  for(const [key,value] of Object.entries(data)){
+   if(key.startsWith('matchups_week_')&&Array.isArray(value)){
+    for(const m of value){
+     for(const p of m.players||[])add(p);
+     for(const p of m.starters||[])add(p);
+    }
+   }
+   if(key.startsWith('transactions_week_')&&Array.isArray(value)){
+    for(const t of value){
+     for(const p of Object.keys(t.adds||{}))add(p);
+     for(const p of Object.keys(t.drops||{}))add(p);
+    }
+   }
+  }
+
+  for(const [key,value] of Object.entries(draftData)){
+   if(key.endsWith('_picks')&&Array.isArray(value)){
+    for(const pick of value)add(pick.player_id);
+   }
+  }
+
+  const players={};
+  let missing=0;
+  for(const id of ids){
+   const p=directory[id];
+   if(p){
+    players[id]={
+     player_id:id,
+     full_name:p.full_name||[p.first_name,p.last_name].filter(Boolean).join(' '),
+     first_name:p.first_name,
+     last_name:p.last_name,
+     position:p.position,
+     team:p.team,
+     status:p.status,
+     active:p.active,
+     years_exp:p.years_exp,
+     age:p.age
+    };
+   }else{
+    players[id]={player_id:id,full_name:null};
+    missing++;
+   }
+  }
+
+  const output={
+   exported_at:new Date().toISOString(),
+   source:'Sleeper public API',
+   league_id:id,
+   league,
+   data,
+   draft_data:draftData,
+   players,
+   player_directory_summary:{
+    referenced_ids:ids.size,
+    missing_ids:missing
+   },
+   notes:[
+    'Player names and positions are retrieved from the current Sleeper NFL directory.',
+    'Weekly matchup records include points and roster player IDs; derived optimal Max PF and standings require further calculation.',
+    'Transactions cover weeks 1–18 of this league season. Prior seasons require prior league IDs.'
+   ]
+  };
+
+  const blob=new Blob([JSON.stringify(output,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`sleeper-league-${id}-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+
+  const failures=Object.entries({...data,...draftData})
+   .filter(([,v])=>v&&v.error)
+   .map(([k,v])=>`${k}: ${v.error}`);
+
+  status.textContent=
+   `Export created.\nPlayers identified: ${ids.size-missing}/${ids.size}.\n`+
+   (failures.length
+    ?`${failures.length} requests failed:\n${failures.slice(0,8).join('\n')}`
+    :'All requests succeeded.');
+
+ }catch(e){
+  status.textContent=`Error: ${e.message}`;
+ }finally{
+  button.disabled=false;
+ }
+};
+</script>
+</body>
+</html>
